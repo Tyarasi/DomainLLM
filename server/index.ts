@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import multer from 'multer';
 import { fileURLToPath } from 'url';
+import { processMessage, clearDocumentCache } from './langchain';
 
 // Load environment variables
 dotenv.config();
@@ -20,6 +21,34 @@ const io = new SocketIOServer(server, {
     methods: ['GET', 'POST'],
   },
 });
+
+// In-memory storage for documents (in a real app, this would be a database)
+const documents = [
+  {
+    id: '1',
+    name: 'Legal Contract.pdf',
+    type: 'pdf',
+    size: 1024 * 1024 * 2.5, // 2.5 MB
+    uploadedAt: '2025-05-29T10:30:00Z',
+    status: 'ready',
+  },
+  {
+    id: '2',
+    name: 'Medical Report.docx',
+    type: 'docx',
+    size: 1024 * 512, // 512 KB
+    uploadedAt: '2025-05-28T14:45:00Z',
+    status: 'ready',
+  },
+  {
+    id: '3',
+    name: 'Research Paper.pdf',
+    type: 'pdf',
+    size: 1024 * 1024 * 3.2, // 3.2 MB
+    uploadedAt: '2025-05-27T09:15:00Z',
+    status: 'ready',
+  },
+];
 
 // Middleware
 app.use(cors());
@@ -51,35 +80,6 @@ app.get('/api/health', (_req, res) => {
 // Document API routes
 app.get('/api/documents', (_req, res) => {
   try {
-    // In a real implementation, this would fetch documents from a database
-    // For now, we'll return mock data
-    const documents = [
-      {
-        id: '1',
-        name: 'Legal Contract.pdf',
-        type: 'pdf',
-        size: 1024 * 1024 * 2.5, // 2.5 MB
-        uploadedAt: '2025-05-29T10:30:00Z',
-        status: 'ready',
-      },
-      {
-        id: '2',
-        name: 'Medical Report.docx',
-        type: 'docx',
-        size: 1024 * 512, // 512 KB
-        uploadedAt: '2025-05-28T14:45:00Z',
-        status: 'ready',
-      },
-      {
-        id: '3',
-        name: 'Research Paper.pdf',
-        type: 'pdf',
-        size: 1024 * 1024 * 3.2, // 3.2 MB
-        uploadedAt: '2025-05-27T09:15:00Z',
-        status: 'ready',
-      },
-    ];
-    
     res.status(200).json(documents);
   } catch (error) {
     console.error('Error fetching documents:', error);
@@ -95,9 +95,8 @@ app.post('/api/documents/upload', upload.array('files'), (req, res) => {
       return res.status(400).json({ error: 'No files uploaded' });
     }
     
-    // In a real implementation, this would process the files and store metadata in a database
-    // For now, we'll return mock data
-    const documents = files.map((file) => ({
+    // Create document objects from the uploaded files
+    const newDocuments = files.map((file) => ({
       id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
       name: file.originalname,
       type: file.originalname.split('.').pop() || 'unknown',
@@ -107,9 +106,21 @@ app.post('/api/documents/upload', upload.array('files'), (req, res) => {
       status: 'processing',
     }));
     
-    // In a real implementation, this would trigger document processing
-    // For now, we'll just return the documents
-    res.status(200).json(documents);
+    // Add the new documents to our in-memory storage
+    documents.push(...newDocuments);
+    
+    // Simulate document processing by updating status to 'ready' after 2 seconds
+    setTimeout(() => {
+      newDocuments.forEach(doc => {
+        const index = documents.findIndex(d => d.id === doc.id);
+        if (index !== -1) {
+          documents[index].status = 'ready';
+        }
+      });
+    }, 2000);
+    
+    // Return the newly created documents
+    res.status(200).json(newDocuments);
   } catch (error) {
     console.error('Error uploading documents:', error);
     res.status(500).json({ error: 'Failed to upload documents' });
@@ -120,8 +131,23 @@ app.delete('/api/documents/:id', (req, res) => {
   try {
     const { id } = req.params;
     
-    // In a real implementation, this would delete the document from storage and database
-    // For now, we'll just return success
+    // Find the document index in our in-memory array
+    const documentIndex = documents.findIndex(doc => doc.id === id);
+    
+    if (documentIndex === -1) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    // Get the document before removing it
+    const documentToDelete = documents[documentIndex];
+    
+    // Remove the document from the array
+    documents.splice(documentIndex, 1);
+    
+    // Clear the document from the LangChain cache
+    clearDocumentCache(documentToDelete.id);
+    
+    // Return success response
     res.status(200).json({ success: true });
   } catch (error) {
     console.error('Error deleting document:', error);
@@ -130,7 +156,7 @@ app.delete('/api/documents/:id', (req, res) => {
 });
 
 // Chat API routes
-app.post('/api/chat', (req, res) => {
+app.post('/api/chat', async (req, res) => {
   try {
     const { message, documentIds } = req.body;
     
@@ -142,17 +168,17 @@ app.post('/api/chat', (req, res) => {
       return res.status(400).json({ error: 'No documents selected' });
     }
     
-    // In a real implementation, this would use LangChain to query the LLM
-    // For now, we'll just return a mock response
-    const response = {
-      id: Date.now().toString(),
-      content: `This is a simulated response to your message: "${message}". In the actual implementation, this would use LangChain to query the local LLM with context from your selected documents.`,
-    };
+    // Use LangChain to process the message with document context
+    const response = await processMessage(message, documentIds, documents);
     
     res.status(200).json(response);
   } catch (error) {
     console.error('Error processing chat message:', error);
-    res.status(500).json({ error: 'Failed to process chat message' });
+    // Return a more user-friendly error response
+    res.status(200).json({
+      id: Date.now().toString(),
+      content: "I encountered an issue while processing your request. This could be due to the document format or content. Please try with different documents or a simpler query."
+    });
   }
 });
 
@@ -160,7 +186,7 @@ app.post('/api/chat', (req, res) => {
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   
-  socket.on('chat:message', (data) => {
+  socket.on('chat:message', async (data) => {
     const { message, documentIds } = data;
     
     if (!message || !documentIds || documentIds.length === 0) {
@@ -168,12 +194,18 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // In a real implementation, this would use LangChain to query the LLM
-    // For now, we'll just emit a mock response
-    socket.emit('chat:response', {
-      id: Date.now().toString(),
-      content: `This is a simulated response to your message: "${message}". In the actual implementation, this would use LangChain to query the local LLM with context from your selected documents.`,
-    });
+    try {
+      // Use LangChain to process the message with document context
+      const response = await processMessage(message, documentIds, documents);
+      socket.emit('chat:response', response);
+    } catch (error) {
+      console.error('Error processing chat message:', error);
+      // Return a more user-friendly error response
+      socket.emit('chat:response', {
+        id: Date.now().toString(),
+        content: "I encountered an issue while processing your request. This could be due to the document format or content. Please try with different documents or a simpler query."
+      });
+    }
   });
   
   socket.on('disconnect', () => {
