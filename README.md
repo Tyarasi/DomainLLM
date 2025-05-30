@@ -68,7 +68,7 @@ Before running DomainLLM, make sure you have the following installed:
 
 1. Start the backend server:
    ```bash
-   pnpm server
+   pnpm server |  npx tsx server/index.ts
    ```
 
 2. In a new terminal, start the frontend:
@@ -86,6 +86,26 @@ Before running DomainLLM, make sure you have the following installed:
 1. **Upload Documents**: Navigate to the Documents page and upload your PDF, DOCX, or TXT files
 2. **Chat with Documents**: Go to the Chat page, select your documents, and start asking questions
 3. **Get Domain-Specific Answers**: The AI will respond based on the content of your selected documents
+
+## 🔧 Configuration
+
+You can configure the LLM and embeddings used by DomainLLM by editing the `.env` file:
+
+### LLM Configuration
+
+DomainLLM supports two types of LLMs:
+
+1. **OpenAI** - Set `LLM_TYPE=openai` and provide your OpenAI API key in `OPENAI_API_KEY`
+2. **HuggingFace** - Set `LLM_TYPE=local` and provide your HuggingFace API key in `HUGGINGFACE_API_KEY`
+
+### Embeddings Configuration
+
+Similarly, you can configure the embeddings model:
+
+1. **OpenAI** - Set `EMBEDDINGS_TYPE=openai` to use OpenAI's embeddings
+2. **HuggingFace** - Set `EMBEDDINGS_TYPE=local` to use HuggingFace's embeddings
+
+See `.env.example` for all available configuration options.
 
 ## 🤝 Contributing
 
