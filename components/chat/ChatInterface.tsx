@@ -38,8 +38,7 @@ export function ChatInterface({ selectedDocuments }: ChatInterfaceProps) {
     setIsLoading(true);
     
     try {
-      // In a real implementation, this would call the backend API
-      // For now, we'll simulate a response after a delay
+      // Check if documents are selected
       if (selectedDocuments.length === 0) {
         toast({
           title: "No documents selected",
@@ -50,18 +49,20 @@ export function ChatInterface({ selectedDocuments }: ChatInterfaceProps) {
         return;
       }
       
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Call the backend API with the chat message and selected documents
+      const { chatApi } = await import("@/lib/api/client");
+      const response = await chatApi.sendMessage(content, selectedDocuments);
       
-      // Generate a response based on selected documents
+      // Add the assistant's response to the chat
       const assistantMessage: Message = {
-        id: Date.now().toString(),
+        id: response.id,
         role: "assistant",
-        content: `This is a simulated response based on the ${selectedDocuments.length} document(s) you selected. In the actual implementation, this would use LangChain to query the local LLM with context from your documents.`,
+        content: response.content,
       };
       
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
+      console.error("Error sending message:", error);
       toast({
         title: "Error",
         description: "Failed to get a response. Please try again.",

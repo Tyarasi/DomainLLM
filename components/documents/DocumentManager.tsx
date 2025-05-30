@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DocumentUploader } from "./DocumentUploader";
 import { DocumentList } from "./DocumentList";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
+import { documentApi, Document as ApiDocument } from "@/lib/api/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface Document {
   id: string;
@@ -16,73 +18,100 @@ interface Document {
 }
 
 export function DocumentManager() {
-  const [documents, setDocuments] = useState<Document[]>([
-    {
-      id: "1",
-      name: "Legal Contract.pdf",
-      type: "pdf",
-      size: 1024 * 1024 * 2.5, // 2.5 MB
-      uploadedAt: "2025-05-29T10:30:00Z",
-      status: "ready",
-    },
-    {
-      id: "2",
-      name: "Medical Report.docx",
-      type: "docx",
-      size: 1024 * 512, // 512 KB
-      uploadedAt: "2025-05-28T14:45:00Z",
-      status: "ready",
-    },
-    {
-      id: "3",
-      name: "Research Paper.pdf",
-      type: "pdf",
-      size: 1024 * 1024 * 3.2, // 3.2 MB
-      uploadedAt: "2025-05-27T09:15:00Z",
-      status: "ready",
-    },
-  ]);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  // Fetch documents from the API
+  const { data: documents = [], isLoading, error } = useQuery({
+    queryKey: ["documents"],
+    queryFn: async () => {
+      try {
+        return await documentApi.getAll();
+      } catch (error) {
+        console.error("Error fetching documents:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch documents. Please try again.",
+          variant: "destructive",
+        });
+        return [];
+      }
+    },
+  });
+
+  // Upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: async (files: File[]) => {
+      try {
+        return await documentApi.upload(files);
+      } catch (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      // Invalidate the documents query to refetch the updated list
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      try {
+        return await documentApi.delete(id);
+      } catch (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      // Invalidate the documents query to refetch the updated list
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+    },
+  });
 
   const handleUpload = async (files: File[]) => {
-    // In a real implementation, this would upload files to the backend
-    // For now, we'll simulate adding them to our local state
-    
-    const newDocuments = files.map((file) => ({
-      id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-      name: file.name,
-      type: file.name.split('.').pop() || "unknown",
-      size: file.size,
-      uploadedAt: new Date().toISOString(),
-      status: "processing" as const,
-    }));
-    
-    setDocuments((prev) => [...prev, ...newDocuments]);
-    
-    // Simulate processing delay
-    setTimeout(() => {
-      setDocuments((prev) =>
-        prev.map((doc) =>
-          newDocuments.some((newDoc) => newDoc.id === doc.id)
-            ? { ...doc, status: "ready" as const }
-            : doc
-        )
-      );
-      
+    try {
+      // Show loading toast
       toast({
-        title: "Documents processed",
-        description: `${files.length} document(s) have been processed and are ready for chat.`,
+        title: "Uploading documents",
+        description: `Uploading ${files.length} document(s)...`,
       });
-    }, 2000);
+      
+      // Upload files to the backend
+      await uploadMutation.mutateAsync(files);
+      
+      // Show success toast
+      toast({
+        title: "Documents uploaded",
+        description: `${files.length} document(s) have been uploaded and are being processed.`,
+      });
+    } catch (error) {
+      console.error("Error uploading documents:", error);
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload documents. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleDelete = (documentId: string) => {
-    setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
-    
-    toast({
-      title: "Document deleted",
-      description: "The document has been removed from your library.",
-    });
+  const handleDelete = async (documentId: string) => {
+    try {
+      // Delete document from the backend
+      await deleteMutation.mutateAsync(documentId);
+      
+      toast({
+        title: "Document deleted",
+        description: "The document has been removed from your library.",
+      });
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      toast({
+        title: "Delete failed",
+        description: "Failed to delete document. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -91,7 +120,7 @@ export function DocumentManager() {
         <CardHeader>
           <CardTitle>Upload Documents</CardTitle>
           <CardDescription>
-            Upload PDF, DOCX, or TXT files to chat with. All processing happens locally on your device.
+            Upload PDF, DOCX, or TXT files to chat with. Files are processed locally on your device.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -107,7 +136,17 @@ export function DocumentManager() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <DocumentList documents={documents} onDelete={handleDelete} />
+          {isLoading ? (
+            <div className="text-center p-6 text-muted-foreground">
+              Loading documents...
+            </div>
+          ) : error ? (
+            <div className="text-center p-6 text-destructive">
+              Failed to load documents. Please try again.
+            </div>
+          ) : (
+            <DocumentList documents={documents} onDelete={handleDelete} />
+          )}
         </CardContent>
       </Card>
     </div>

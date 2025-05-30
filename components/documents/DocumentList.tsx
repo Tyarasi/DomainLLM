@@ -25,6 +25,16 @@ export function DocumentList({ documents, onDelete }: DocumentListProps) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const formatUploadDate = (dateString: string): string => {
+    try {
+      return formatDistanceToNow(new Date(dateString), {
+        addSuffix: true,
+      });
+    } catch (error) {
+      return "Unknown date";
+    }
+  };
+
   if (documents.length === 0) {
     return (
       <div className="text-center p-6 text-muted-foreground">
@@ -50,9 +60,7 @@ export function DocumentList({ documents, onDelete }: DocumentListProps) {
                 <span>{formatFileSize(document.size)}</span>
                 <span>•</span>
                 <span>
-                  {formatDistanceToNow(new Date(document.uploadedAt), {
-                    addSuffix: true,
-                  })}
+                  {document.uploadedAt ? formatUploadDate(document.uploadedAt) : "Unknown date"}
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1">
